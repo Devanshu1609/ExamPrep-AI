@@ -1,0 +1,225 @@
+import os
+import logging
+from PIL import Image
+import pytesseract
+from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor
+
+from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import Chroma
+from langchain_openai import OpenAIEmbeddings
+from langchain.schema import Document
+from langchain.tools import Tool
+
+# ---------------------- Environment Setup ---------------------- #
+load_dotenv()
+
+# ---------------------- Logging Setup ---------------------- #
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+# =============================================================== #
+# 🧠 DOCUMENT PROCESSOR TOOLS
+# =============================================================== #
+class DocumentProcessorTools:
+    def __init__(
+        self,
+        persist_directory: str = "vector_store",
+        chunk_size: int = 1000,
+        chunk_overlap: int = 200,
+        batch_size: int = 100
+    ):
+        """
+        Handles text extraction, chunking, embedding, and storage into ChromaDB.
+        """
+        self.persist_directory = persist_directory
+        self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+        self.splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            separators=["\n\n", ".", "!", "?"]
+        )
+        self.batch_size = batch_size
+
+    # ----------------------------------------------------------- #
+    # 📘 Load and Extract Text
+    # ----------------------------------------------------------- #
+    def load_document(self, file_path: str):
+        """Loads documents of type PDF, DOCX, or Image."""
+        ext = file_path.split('.')[-1].lower()
+        logger.info(f"Loading file: {file_path}")
+
+        if ext == "pdf":
+            loader = PyPDFLoader(file_path)
+            return loader.load_and_split()
+
+        elif ext == "docx":
+            loader = Docx2txtLoader(file_path)
+            return loader.load()
+
+        elif ext in ["png", "jpg", "jpeg"]:
+            text = pytesseract.image_to_string(Image.open(file_path), config="--psm 3")
+            return [Document(page_content=text)]
+
+        else:
+            raise ValueError(f"Unsupported file type: {ext}")
+
+    def extract_text(self, file_path: str) -> str:
+        """Extracts raw text from any supported document type."""
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        docs = self.load_document(file_path)
+        if not docs:
+            raise ValueError("No text extracted from document.")
+
+        full_text = " ".join(doc.page_content for doc in docs)
+        logger.info(f"Extracted text length: {len(full_text)} characters")
+        return full_text
+
+    # ----------------------------------------------------------- #
+    # ✂️ Chunk Documents
+    # ----------------------------------------------------------- #
+    def chunk_documents(self, documents):
+        """Splits long documents into smaller overlapping chunks."""
+        if len(documents) <= 1:
+            return self.splitter.split_documents(documents)
+
+        with ThreadPoolExecutor() as executor:
+            chunk_lists = list(executor.map(
+                lambda doc: self.splitter.split_documents([doc]), documents
+            ))
+
+        chunks = [chunk for sublist in chunk_lists for chunk in sublist]
+        logger.info(f"Created {len(chunks)} text chunks.")
+        return chunks
+
+    # ----------------------------------------------------------- #
+    # 🧠 Vector Database Management
+    # ----------------------------------------------------------- #
+    def get_vectordb(self):
+        """Initialize or load existing Chroma vector database."""
+        try:
+            if os.path.exists(self.persist_directory):
+                vectordb = Chroma(
+                    persist_directory=self.persist_directory,
+                    embedding_function=self.embeddings
+                )
+            else:
+                vectordb = Chroma.from_documents(
+                    documents=[],
+                    embedding=self.embeddings,
+                    persist_directory=self.persist_directory
+                )
+            return vectordb
+        except Exception as e:
+            logger.warning(f"Vector DB initialization failed: {e}. Creating new DB.")
+            return Chroma.from_documents(
+                documents=[],
+                embedding=self.embeddings,
+                persist_directory=self.persist_directory
+            )
+
+    def store_in_vectordb(self, chunks):
+        """Stores chunked documents in Chroma vector store."""
+        vectordb = self.get_vectordb()
+        for i in range(0, len(chunks), self.batch_size):
+            batch = chunks[i:i + self.batch_size]
+            vectordb.add_documents(batch)
+        vectordb.persist()
+        logger.info(f"Stored {len(chunks)} chunks in vector database.")
+        return vectordb
+
+    # ----------------------------------------------------------- #
+    # ⚙️ Full Document Processing
+    # ----------------------------------------------------------- #
+    def process_document(self, file_path: str) -> dict:
+        """
+        Loads, extracts, chunks, and embeds a document into ChromaDB.
+        Returns metadata + extracted text.
+        """
+        if not os.path.exists(file_path):
+            return {"error": f"File not found: {file_path}"}
+
+        try:
+            logger.info(f"Processing document: {file_path}")
+            docs = self.load_document(file_path)
+            if not docs:
+                return {"error": "No text extracted from document."}
+
+            chunks = self.chunk_documents(docs)
+            self.store_in_vectordb(chunks)
+            extracted_text = " ".join(doc.page_content for doc in docs)
+
+            return {
+                "status": "success",
+                "file_name": os.path.basename(file_path),
+                "num_chunks": len(chunks),
+                "vector_db_path": self.persist_directory,
+                "extracted_text": extracted_text
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing document: {e}")
+            return {"error": str(e)}
+
+    # ----------------------------------------------------------- #
+    # 🏷️ Store Metadata / AI Results
+    # ----------------------------------------------------------- #
+    def store_metadata(self, content: str, meta_type: str, source_file: str):
+        """Stores AI-generated content (summary, analysis, etc.) as metadata."""
+        if not content.strip():
+            return {"error": "Empty content, nothing to store."}
+
+        doc = Document(
+            page_content=content,
+            metadata={"type": meta_type, "source": source_file}
+        )
+        self.store_in_vectordb([doc])
+
+        return {
+            "status": "success",
+            "stored_type": meta_type,
+            "source_file": source_file,
+            "vector_db_path": self.persist_directory
+        }
+
+    # ----------------------------------------------------------- #
+    # 🧰 LangChain-Compatible Tool Definitions
+    # ----------------------------------------------------------- #
+    def get_tools(self):
+        """Returns list of Tool objects for LangChain or LangGraph agent integration."""
+        return [
+            Tool(
+                name="process_document",
+                func=self.process_document,
+                description=(
+                    "Process and store a document (PDF, DOCX, PNG, JPG, JPEG) into the vector database. "
+                    "Returns JSON with file name, chunk count, DB path, and extracted text."
+                )
+            ),
+            Tool(
+                name="extract_text",
+                func=self.extract_text,
+                description=(
+                    "Extract raw text from a document without storing it in the database. "
+                    "Useful for passing plain text to other agents (e.g., summarizer)."
+                )
+            ),
+            Tool(
+                name="store_metadata",
+                func=lambda args: self.store_metadata(
+                    args.get("content", ""),
+                    args.get("type", "generic"),
+                    args.get("source", "unknown")
+                ),
+                description=(
+                    "Store AI-generated metadata (summary, insights, etc.) into the vector database. "
+                    "Input: dict {content: str, type: str, source: str}."
+                )
+            )
+        ]
