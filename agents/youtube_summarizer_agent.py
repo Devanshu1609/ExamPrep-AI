@@ -1,5 +1,5 @@
 # agents/youtube_summarizer_agent.py
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from tools.youtube_transcript_tool import YouTubeTranscriptTool
 from tools.analysis_storage_tool import AnalysisStorageTool
 
@@ -16,10 +16,10 @@ class YouTubeSummarizerAgent:
         )
 
     def create_agent(self):
-        return create_react_agent(
+        return create_agent(
             model=self.model,
             tools=self.tools,
-            prompt=(
+            system_prompt=(
                 "You are an AI academic assistant that analyzes YouTube lecture or tutorial videos.\n\n"
                 "🎯 YOUR GOAL:\n"
                 "Use the transcript of a YouTube video to create a detailed, structured learning summary "

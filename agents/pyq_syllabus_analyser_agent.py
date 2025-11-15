@@ -1,12 +1,11 @@
 # agents/pyq_syllabus_analyser_agent.py
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from tools.analysis_storage_tool import AnalysisStorageTool
 
 class PYQSyllabusAnalyserAgent:
-    def __init__(self, model: str = "gemini-1.5-flash", persist_directory: str = "vector_store"):
+    def __init__(self, model: str = "openai:gpt-4.1", persist_directory: str = "vector_store"):
         self.model = model
-        self.tools = AnalysisStorageTool(persist_directory).get_tools()
-        self.name = "pyq_syllabus_analyser_agent"
+        self.name = "pyq_syllabus_analysis_agent"
         self.description = (
             "Analyzes PYQs (Past Year Questions) and syllabus content to identify "
             "exam trends, repeated questions, frequently tested topics, and predicts "
@@ -14,10 +13,9 @@ class PYQSyllabusAnalyserAgent:
         )
 
     def create_agent(self):
-        return create_react_agent(
+        return create_agent(
             model=self.model,
-            tools=self.tools,
-            prompt=(
+            system_prompt=(
                 "You are an expert academic exam analyst AI designed to study and interpret "
                 "past-year question papers (PYQs) and official syllabus documents.\n\n"
 
@@ -68,12 +66,12 @@ class PYQSyllabusAnalyserAgent:
                 "  \"exam_preparation_tips\": [string, ...]      // practical advice based on analysis\n"
                 "}\n\n"
 
-                "💾 AFTER generating the JSON:\n"
-                "- ALWAYS call the tool `store_analysis_result` with:\n"
-                "    agent_name='pyq_syllabus_analyser_agent',\n"
-                "    result_type='trend_analysis',\n"
-                "    result=<your JSON>\n"
-                "  (Include doc_id if available.)\n\n"
+                # "💾 AFTER generating the JSON:\n"
+                # "- ALWAYS call the tool `store_analysis_result` with:\n"
+                # "    agent_name='pyq_syllabus_analysis_agent',\n"
+                # "    result_type='trend_analysis',\n"
+                # "    result=<your JSON>\n"
+                # "  (Include doc_id if available.)\n\n"
 
                 "⚠️ DO NOT output markdown, text, or commentary — ONLY JSON output.\n"
                 "Ensure the report is logically consistent, data-driven, and practical for exam preparation.\n"

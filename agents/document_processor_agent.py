@@ -1,4 +1,4 @@
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from tools.document_processor_tool import DocumentProcessorTools
 
 class DocumentProcessorAgent:
@@ -9,10 +9,10 @@ class DocumentProcessorAgent:
         self.description = "Extracts and processes text from documents efficiently."
 
     def create_agent(self):
-        return create_react_agent(
+        return create_agent(
             model=self.model,
             tools=self.tools,
-            prompt=(
+            system_prompt=(
                 "You are DocumentProcessorAgent, an expert AI assistant for processing and storing documents into a vector database.\n\n"
                 "### INSTRUCTIONS ###\n"
                 "1. Accept PDF and DOCX file paths for ingestion.\n"

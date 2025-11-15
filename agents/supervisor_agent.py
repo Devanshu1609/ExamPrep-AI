@@ -1,5 +1,5 @@
 # agents/supervisor_agent.py
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 
 class SupervisorAgent:
     def __init__(self, model="openai:gpt-4.1"):
@@ -11,10 +11,10 @@ class SupervisorAgent:
         )
 
     def create_agent(self):
-        return create_react_agent(
+        return create_agent(
             model=self.model,
             tools=[],  # Supervisor does not perform direct work — only decides routing
-            prompt=(
+            system_prompt=(
                 "You are the **Supervisor Agent** for the ExamPrep AI System.\n\n"
                 "Your job is to intelligently decide **which specialized agent** should be called next "
                 "based on the user's uploaded content type and context.\n\n"
@@ -26,8 +26,9 @@ class SupervisorAgent:
                 "### 🧩 AVAILABLE AGENTS\n"
                 "- **document_ingestion_agent** → Extracts text from uploaded documents (PDF, DOCX, images) and stores them in the vector database.\n"
                 "- **summarizer_agent** → Explains or describes uploaded notes, study material, or books in a detailed, topic-wise manner.\n"
-                "- **pyq_syllabus_analyser_agent** → Analyzes syllabus and PYQs to detect repeated topics, important areas, and predict future questions.\n"
+                "- **pyq_syllabus_analysis_agent** → Analyzes syllabus and PYQs to detect repeated topics, important areas, and predict future questions.\n"
                 "- **youtube_summarizer_agent** → Extracts transcript from YouTube videos and generates a structured explanation with key insights.\n"
+                "- **store_analysis_agent** → Stores the analysis results from other agents into the vector database for future retrieval.\n"
                 "- **end** → Marks the completion of the workflow.\n\n"
 
                 "### ⚙️ DECISION RULES\n"
@@ -35,22 +36,24 @@ class SupervisorAgent:
                 "   → First call **document_ingestion_agent** to extract and store text.\n\n"
                 "2️⃣ **After ingestion:**\n"
                 "   - If the document type is **notes, book, or study material**, then call **summarizer_agent**.\n"
-                "   - If the document type is **PYQs or syllabus**, then call **pyq_syllabus_analyser_agent**.\n\n"
+                "   - If the document type is **PYQs or syllabus**, then call **pyq_syllabus_analysis_agent**.\n\n"
                 "3️⃣ **When the user provides a YouTube video link:**\n"
                 "   → Directly call **youtube_summarizer_agent**.\n\n"
-                "4️⃣ **If none of the above apply or analysis is complete:**\n"
-                "   → Choose **end**.\n\n"
+                "4️⃣ **When an agent returns JSON analysis (summary, PYQ trends, syllabus analysis, video summary):**\n"
+                "    → Route to **store_analysis_agent** to save the analysis into the vector database.\n\n"
+                "5️⃣ **When storing is complete:**\n"
+                "    → Route back to **end** unless there is another step.\n\n"
 
                 "### 💡 HINTS\n"
                 "- File extensions (.pdf, .docx, .jpg, .png) → Document ingestion first.\n"
                 "- Words like 'notes', 'material', or 'book' → summarizer_agent.\n"
-                "- Words like 'syllabus', 'PYQ', 'previous year', 'exam paper' → pyq_syllabus_analyser_agent.\n"
+                "- Words like 'syllabus', 'PYQ', 'previous year', 'exam paper' → pyq_syllabus_analysis_agent.\n"
                 "- YouTube or video link (youtube.com / youtu.be) → youtube_summarizer_agent.\n\n"
 
                 "### 🧾 RESPONSE FORMAT\n"
                 "Return **STRICT JSON ONLY**, no markdown or explanations:\n"
                 "{\n"
-                "  \"next_agent\": \"<one_of: document_ingestion_agent | summarizer_agent | pyq_syllabus_analyser_agent | youtube_summarizer_agent | end>\",\n"
+                "  \"next_agent\": \"<one_of: document_ingestion_agent | summarizer_agent | pyq_syllabus_analysis_agent | youtube_summarizer_agent | end>\",\n"
                 "  \"reason\": \"<short explanation of why you chose this agent>\"\n"
                 "}\n\n"
 

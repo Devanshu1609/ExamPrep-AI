@@ -1,5 +1,5 @@
 # agents/summarizer_agent.py
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from tools.analysis_storage_tool import AnalysisStorageTool
 
 class SummarizerAgent:
@@ -10,10 +10,10 @@ class SummarizerAgent:
         self.description = "Summarizes extracted document text; highlights key points and explains content in plain language."
 
     def create_agent(self):
-        return create_react_agent(
+        return create_agent(
             model=self.model,
             tools=self.tools,
-            prompt=(
+            system_prompt=(
                     "You are an intelligent academic assistant designed to read and deeply explain educational content "
                 "such as notes, and study material for students preparing for exams.\n\n"
 
@@ -42,13 +42,13 @@ class SummarizerAgent:
                     "  \"key_takeaways\": [string, ...]                // final section summarizing the main insights\n"
                     "}\n\n"
 
-                    "AFTER generating the JSON:\n"
-                    "- ALWAYS call the tool store_analysis_result with arguments:\n"
-                    "    agent_name='summarizer_agent',\n"
-                    "    result_type='summary',\n"
-                    "    result=<your JSON>\n"
-                    "  (Optionally include doc_id if available.)\n"
-                    "- RETURN the same JSON as the final output, without any extra commentary."
+                    # "AFTER generating the JSON:\n"
+                    # "- ALWAYS call the tool store_analysis_result with arguments:\n"
+                    # "    agent_name='summarizer_agent',\n"
+                    # "    result_type='summary',\n"
+                    # "    result=<your JSON>\n"
+                    # "  (Optionally include doc_id if available.)\n"
+                    "- RETURN the JSON as the final output, without any extra commentary."
                 ),
 
             name=self.name
