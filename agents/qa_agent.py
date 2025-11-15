@@ -1,10 +1,22 @@
 import os
 from typing import List, Optional, Dict, Any
+
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+
+# Vector DB sources
 from tools.analysis_storage_tool import AnalysisStorageTool
+from tools.document_processor_tool import DocumentProcessorTools
+
 
 class QAAgent:
+    """
+    Answers user questions using BOTH:
+    - Raw extracted text chunks (raw vector DB)
+    - Stored analyses (summaries, PYQ trends, syllabus analysis, video summary)
+      using the RETRIEVAL TOOL, not raw vector access
+    """
+
     def __init__(
         self,
         model: str = "gpt-4.1",
@@ -14,86 +26,74 @@ class QAAgent:
         temperature: float = 0.3,
         max_history: int = 6,
     ):
-        """
-        QA Agent that answers user questions based on uploaded study material,
-        PYQs, syllabus, or summarized YouTube videos.
-        """
         self.model_name = model
         self.doc_id = doc_id
         self.k = k
         self.temperature = temperature
         self.max_history = max_history
 
-        # LLM configuration
+        # LLM
         self.llm = ChatOpenAI(model=model, temperature=temperature)
 
-        # Connect to shared vector database (same as other agents)
+        # ---- Raw text retriever ----
+        self.dp = DocumentProcessorTools(persist_directory)
+        self.raw_vector_db = self.dp.get_vectordb()
+        self.raw_retriever = self.raw_vector_db.as_retriever(search_kwargs={"k": k})
+
+        # ---- Stored Analysis Retrieval TOOL ----
         self.analysis_tool = AnalysisStorageTool(persist_directory)
-        if not hasattr(self.analysis_tool, "vs") or self.analysis_tool.vs is None:
-            raise RuntimeError("AnalysisStorageTool did not expose a vector store (vs).")
+        self.retrieve_tool = self.analysis_tool.get_retrieval_tools()[0]
 
-        search_kwargs: Dict[str, Any] = {"k": self.k}
-        self.retriever = self.analysis_tool.vs.as_retriever(search_kwargs=search_kwargs)
-
-        # Conversation memory
+        # Conversation history
         self.history: List[Any] = []
 
-        # Normalize document IDs for matching
+        # Normalize doc ID
         self._doc_id_candidates = self._normalize_doc_ids(doc_id)
 
-    # ------------------------- PROMPT -------------------------
-
+    # -----------------------------------------------------
+    # SYSTEM PROMPT
+    # -----------------------------------------------------
     @property
     def _system_prompt(self) -> str:
         return (
-            "You are ExamPrepAI, a helpful and knowledgeable assistant for students.\n"
-            "You answer questions using ONLY the provided CONTEXT, which may include notes, books, PYQs, "
-            "syllabus, or YouTube lecture summaries.\n\n"
-            "🎯 **GOALS:**\n"
-            "- Explain topics clearly and accurately.\n"
-            "- Give structured, step-by-step reasoning where needed.\n"
-            "- Always cite which part of the context (book, notes, or video) you used.\n"
-            "- If multiple related points exist, summarize them coherently.\n"
-            "- If the question is not answerable from the context, say so honestly and suggest what the user can do next.\n\n"
-            "🧠 **RULES:**\n"
-            "1. NEVER invent facts or go beyond the given CONTEXT.\n"
-            "2. Keep explanations conceptually rich but easy to understand for students.\n"
-            "3. If question relates to PYQs or syllabus, highlight topic importance or exam trends.\n"
-            "4. Use examples or definitions if they are available in context.\n"
-            "5. Keep tone educational, supportive, and friendly."
+            "You are ExamPrepAI, a knowledgeable assistant for students.\n"
+            "You answer using ONLY the provided 'RAW TEXT CONTEXT' and 'ANALYSIS CONTEXT'.\n\n"
+            "🎯 GOALS:\n"
+            "- Explain clearly and accurately.\n"
+            "- Highlight exam trends & important topics.\n"
+            "- Prefer ANALYSIS context if present.\n"
+            "- If context is weak, admit uncertainty.\n\n"
+            "🧠 RULES:\n"
+            "1. Never invent facts.\n"
+            "2. If context is missing — say so.\n"
+            "3. Use examples from context only.\n"
+            "4. Keep tone: academic, helpful, exam-focused."
         )
 
-    # ------------------------- CONTEXT HANDLING -------------------------
-
-    def _format_context(self, docs: List[Any]) -> str:
-        """Combine retrieved docs into readable context block"""
+    # -----------------------------------------------------
+    # CONTEXT FORMATTER
+    # -----------------------------------------------------
+    def _format_context(self, docs: List[Any], label: str) -> str:
         if not docs:
-            return "(no relevant context found)"
-        return "\n\n".join(
-            f"[C{i+1}] Source: {d.metadata.get('source') or d.metadata.get('file_name') or 'unknown'}"
-            + (f" | Page: {d.metadata.get('page')}" if d.metadata.get('page') else "")
-            + f"\n{d.page_content or ''}"
-            for i, d in enumerate(docs)
-        )
+            return f"-- {label}: No context found --\n"
+
+        out = [f"==== {label} ({len(docs)} docs) ===="]
+        for i, d in enumerate(docs):
+            src = d.metadata.get("source") or d.metadata.get("file_name") or "unknown"
+            out.append(
+                f"[{label}-{i+1}] Source: {src}\n{d.page_content}\n"
+            )
+        return "\n".join(out)
 
     def _messages(self, question: str, context: str) -> List[Any]:
         msgs: List[Any] = [SystemMessage(content=self._system_prompt)]
-
-        # Keep short memory context
-        if self.history:
-            msgs.extend(self.history[-self.max_history:])
-
-        user_block = (
-            f"CONTEXT (for answering):\n{context}\n\n"
-            f"QUESTION: {question}\n\n"
-            "Answer using ONLY the CONTEXT above. Explain concepts clearly, include reasoning, "
-            "and cite which context parts support your answer."
-        )
-        msgs.append(HumanMessage(content=user_block))
+        msgs.extend(self.history[-self.max_history:])  # only last few messages
+        msgs.append(HumanMessage(content=f"CONTEXT:\n{context}\n\nQUESTION: {question}"))
         return msgs
 
-    # ------------------------- DOC MATCHING -------------------------
-
+    # -----------------------------------------------------
+    # DOC MATCHING
+    # -----------------------------------------------------
     def _normalize_doc_ids(self, raw_id: Optional[str]) -> set:
         if not raw_id:
             return set()
@@ -101,58 +101,75 @@ class QAAgent:
         return {raw_id, bn, os.path.splitext(bn)[0]}
 
     def _doc_matches(self, metadata: dict) -> bool:
-        """Match chunks belonging to this doc_id"""
+        """Filter by doc_id."""
         if not self.doc_id or not self._doc_id_candidates:
             return True
-        for key in ("doc_id", "source", "file_name", "source_id", "source_filename"):
+        for key in ("doc_id", "source", "file_name", "source_filename"):
             val = metadata.get(key)
-            if not val:
-                continue
-            vals = val if isinstance(val, (list, tuple)) else [val]
-            if any(cand in str(v) for cand in self._doc_id_candidates for v in vals):
+            if val and any(c in str(val) for c in self._doc_id_candidates):
                 return True
         return False
 
-    # ------------------------- ANSWERING -------------------------
-
+    # -----------------------------------------------------
+    # ANSWER PIPELINE
+    # -----------------------------------------------------
     def answer(self, question: str) -> str:
-        """Main answering pipeline"""
+
+        # ---------------- RAW TEXT ----------------
         try:
-            docs = self.retriever.get_relevant_documents(question)
+            raw_docs = self.raw_retriever.get_relevant_documents(question)
         except Exception:
-            # If retrieval fails, fallback to LLM without context
-            warning = "⚠ Retrieval failed; answering without grounding.\n"
-            msgs = [
+            raw_docs = []
+
+        if self.doc_id:
+            raw_docs = [d for d in raw_docs if self._doc_matches(d.metadata)]
+
+        # ---------------- ANALYSIS via TOOL ----------------
+        try:
+            # Call the tool programmatically
+            tool_result = self.retrieve_tool.run(
+                {
+                    "query": question,
+                    "k": self.k,
+                    "filter": {"doc_id": self.doc_id} if self.doc_id else None
+                }
+            )
+
+            # tool_result = {"query":"...", "results":[{rank,content,metadata}]}
+            analysis_docs = []
+            for r in tool_result.get("results", []):
+                analysis_docs.append(
+                    type("Doc", (), {
+                        "page_content": r["content"],
+                        "metadata": r["metadata"]
+                    })
+                )
+        except Exception:
+            analysis_docs = []
+
+        # -------------- Combine --------------
+        combined_docs = raw_docs + analysis_docs
+
+        if not combined_docs:
+            ai = self.llm.invoke([
                 SystemMessage(content=self._system_prompt),
-                *self.history[-self.max_history:],
-                HumanMessage(content=f"{warning}QUESTION: {question}\nIf uncertain, say you don't know."),
-            ]
-            ai = self.llm.invoke(msgs)
-            self.history.extend([HumanMessage(content=question), AIMessage(content=ai.content)])
+                HumanMessage(content=f"No relevant context found.\nQUESTION: {question}")
+            ])
             return ai.content
 
-        # Filter by document ID
-        warning_text = ""
-        if self.doc_id:
-            filtered = [d for d in docs if self._doc_matches(d.metadata or {})]
-            if filtered:
-                docs = filtered
-            else:
-                warning_text = (
-                    "⚠ No chunks matched the requested document ID. Using most relevant ones.\n\n"
-                )
+        # -------------- Build context string --------------
+        context = (
+            self._format_context(raw_docs, "RAW TEXT") +
+            "\n\n" +
+            self._format_context(analysis_docs, "STORED ANALYSIS")
+        )
 
-        # Build and send messages
-        context = self._format_context(docs)
-        if warning_text:
-            context = warning_text + context
-
+        # -------------- Ask LLM --------------
         msgs = self._messages(question, context)
         ai = self.llm.invoke(msgs)
 
-        # Maintain conversation history
-        self.history.extend([HumanMessage(content=question), AIMessage(content=ai.content)])
-        if len(self.history) > self.max_history * 2:
-            self.history = self.history[-self.max_history * 2:]
+        # Update memory
+        self.history.append(HumanMessage(content=question))
+        self.history.append(AIMessage(content=ai.content))
 
         return ai.content
