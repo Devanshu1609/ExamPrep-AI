@@ -8,6 +8,7 @@ from agents.document_processor_agent import DocumentProcessorAgent
 from agents.summarizer_agent import SummarizerAgent
 from agents.pyq_syllabus_analyser_agent import PYQSyllabusAnalyserAgent
 from agents.youtube_summarizer_agent import YouTubeSummarizerAgent
+from agents.StoreAnalysisAgent import StoreAnalysisAgent
 from agents.qa_agent import QAAgent
 from utils.message_utils import pretty_print_messages  # optional helper to print nicely
 from fastapi import FastAPI
@@ -16,7 +17,7 @@ load_dotenv()
 app = FastAPI(title="Legal Document Assistant")
 
 # ------------------- CONFIG ------------------- #
-UPLOAD_FILE_PATH = r"uploads\uietmate.pdf"  # <-- Change this to your test file
+UPLOAD_FILE_PATH = r"uploads\CN_pyq.pdf"  # <-- Change this to your test file
 VECTOR_DB_DIR = "vector_store"
 
 # ------------------- Initialize Agents ------------------- #
@@ -25,13 +26,15 @@ summarizer_agent = SummarizerAgent(persist_directory=VECTOR_DB_DIR).create_agent
 pyq_analysis_agent = PYQSyllabusAnalyserAgent(persist_directory=VECTOR_DB_DIR).create_agent()
 youtube_agent = YouTubeSummarizerAgent(persist_directory=VECTOR_DB_DIR).create_agent()
 supervisor_agent = SupervisorAgent().create_agent()
+analysis_storage_agent = StoreAnalysisAgent(persist_directory=VECTOR_DB_DIR).create_agent()
 
 agents = {
     "supervisor_agent": supervisor_agent,
     "document_ingestion_agent": doc_ingestion_agent,
     "summarizer_agent": summarizer_agent,
     "pyq_syllabus_analysis_agent": pyq_analysis_agent,
-    "youtube_video_summarizer_agent": youtube_agent
+    "youtube_video_summarizer_agent": youtube_agent,
+    "store_analysis_agent": analysis_storage_agent,
 }
 
 # ------------------- Build Multi-Agent Graph ------------------- #
