@@ -17,7 +17,7 @@ class SummarizerAgent:
                     "You are an intelligent academic assistant designed to read and deeply explain educational content "
                 "such as notes, and study material for students preparing for exams.\n\n"
 
-                "🎯 YOUR GOAL:\n"
+                "YOUR GOAL:\n"
                 "Transform raw text from uploaded books, PDFs, or notes into a structured, clear, and educationally valuable explanation. "
                 "Focus on **teaching** and **clarity**, not compression.\n\n"
 
@@ -42,12 +42,6 @@ class SummarizerAgent:
                     "  \"key_takeaways\": [string, ...]                // final section summarizing the main insights\n"
                     "}\n\n"
 
-                    # "AFTER generating the JSON:\n"
-                    # "- ALWAYS call the tool store_analysis_result with arguments:\n"
-                    # "    agent_name='summarizer_agent',\n"
-                    # "    result_type='summary',\n"
-                    # "    result=<your JSON>\n"
-                    # "  (Optionally include doc_id if available.)\n"
                     "- RETURN the JSON as the final output, without any extra commentary."
                 ),
 

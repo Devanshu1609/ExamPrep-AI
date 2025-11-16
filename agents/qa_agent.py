@@ -32,27 +32,19 @@ class QAAgent:
         self.temperature = temperature
         self.max_history = max_history
 
-        # LLM
         self.llm = ChatOpenAI(model=model, temperature=temperature)
 
-        # ---- Raw text retriever ----
         self.dp = DocumentProcessorTools(persist_directory)
         self.raw_vector_db = self.dp.get_vectordb()
         self.raw_retriever = self.raw_vector_db.as_retriever(search_kwargs={"k": k})
 
-        # ---- Stored Analysis Retrieval TOOL ----
         self.analysis_tool = AnalysisStorageTool(persist_directory)
         self.retrieve_tool = self.analysis_tool.get_retrieval_tools()[0]
 
-        # Conversation history
         self.history: List[Any] = []
 
-        # Normalize doc ID
         self._doc_id_candidates = self._normalize_doc_ids(doc_id)
 
-    # -----------------------------------------------------
-    # SYSTEM PROMPT
-    # -----------------------------------------------------
     @property
     def _system_prompt(self) -> str:
         return (
@@ -70,9 +62,6 @@ class QAAgent:
             "4. Keep tone: academic, helpful, exam-focused."
         )
 
-    # -----------------------------------------------------
-    # CONTEXT FORMATTER
-    # -----------------------------------------------------
     def _format_context(self, docs: List[Any], label: str) -> str:
         if not docs:
             return f"-- {label}: No context found --\n"
@@ -91,9 +80,6 @@ class QAAgent:
         msgs.append(HumanMessage(content=f"CONTEXT:\n{context}\n\nQUESTION: {question}"))
         return msgs
 
-    # -----------------------------------------------------
-    # DOC MATCHING
-    # -----------------------------------------------------
     def _normalize_doc_ids(self, raw_id: Optional[str]) -> set:
         if not raw_id:
             return set()
@@ -110,12 +96,8 @@ class QAAgent:
                 return True
         return False
 
-    # -----------------------------------------------------
-    # ANSWER PIPELINE
-    # -----------------------------------------------------
     def answer(self, question: str) -> str:
 
-        # ---------------- RAW TEXT ----------------
         try:
             raw_docs = self.raw_retriever.get_relevant_documents(question)
         except Exception:
@@ -124,9 +106,7 @@ class QAAgent:
         if self.doc_id:
             raw_docs = [d for d in raw_docs if self._doc_matches(d.metadata)]
 
-        # ---------------- ANALYSIS via TOOL ----------------
         try:
-            # Call the tool programmatically
             tool_result = self.retrieve_tool.run(
                 {
                     "query": question,
@@ -135,7 +115,6 @@ class QAAgent:
                 }
             )
 
-            # tool_result = {"query":"...", "results":[{rank,content,metadata}]}
             analysis_docs = []
             for r in tool_result.get("results", []):
                 analysis_docs.append(
@@ -147,7 +126,6 @@ class QAAgent:
         except Exception:
             analysis_docs = []
 
-        # -------------- Combine --------------
         combined_docs = raw_docs + analysis_docs
 
         if not combined_docs:
@@ -157,18 +135,15 @@ class QAAgent:
             ])
             return ai.content
 
-        # -------------- Build context string --------------
         context = (
             self._format_context(raw_docs, "RAW TEXT") +
             "\n\n" +
             self._format_context(analysis_docs, "STORED ANALYSIS")
         )
 
-        # -------------- Ask LLM --------------
         msgs = self._messages(question, context)
         ai = self.llm.invoke(msgs)
 
-        # Update memory
         self.history.append(HumanMessage(content=question))
         self.history.append(AIMessage(content=ai.content))
 

@@ -5,17 +5,6 @@ from tools.analysis_storage_tool import AnalysisStorageTool
 
 
 class StoreAnalysisAgent:
-    """
-    A dedicated agent responsible for storing analysis results
-    from other agents into the vector database.
-
-    It receives a JSON analysis (string or dict), plus metadata like:
-      - agent_name (who produced it)
-      - result_type (e.g., summary, trend_analysis, video_summary)
-      - doc_id (file identifier)
-    
-    This agent does NOT generate analysis — it ONLY stores.
-    """
 
     def __init__(self, model: str = "openai:gpt-4.1", persist_directory: str = "vector_store"):
         self.model = model
@@ -29,11 +18,6 @@ class StoreAnalysisAgent:
         )
 
     def create_agent(self):
-        """
-        This agent ONLY calls the tool `store_analysis_result`.
-        It never produces text output except final confirmation.
-        """
-
         return create_agent(
             model=self.model,
             tools=self.tools,
@@ -48,7 +32,7 @@ class StoreAnalysisAgent:
                 "- `doc_id`: identifier of the document/video\n"
                 "- `metadata`: optional metadata\n\n"
 
-                "📌 IMPORTANT RULES:\n"
+                "IMPORTANT RULES:\n"
                 "1. ALWAYS call the tool `store_analysis_result`.\n"
                 "2. NEVER modify or rewrite the analysis JSON.\n"
                 "3. NEVER output markdown, explanations, or JSON by yourself.\n"
