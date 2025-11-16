@@ -4,27 +4,22 @@ from PIL import Image
 import pytesseract
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor
-
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings
-from langchain.schema import Document
-from langchain.tools import Tool
+from langchain_core.documents import Document
+from langchain.tools import tool   
 
-# ---------------------- Environment Setup ---------------------- #
 load_dotenv()
 
-# ---------------------- Logging Setup ---------------------- #
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# =============================================================== #
-# 🧠 DOCUMENT PROCESSOR TOOLS
-# =============================================================== #
+
 class DocumentProcessorTools:
     def __init__(
         self,
@@ -81,9 +76,6 @@ class DocumentProcessorTools:
         logger.info(f"Extracted text length: {len(full_text)} characters")
         return full_text
 
-    # ----------------------------------------------------------- #
-    # ✂️ Chunk Documents
-    # ----------------------------------------------------------- #
     def chunk_documents(self, documents):
         """Splits long documents into smaller overlapping chunks."""
         if len(documents) <= 1:
@@ -98,9 +90,7 @@ class DocumentProcessorTools:
         logger.info(f"Created {len(chunks)} text chunks.")
         return chunks
 
-    # ----------------------------------------------------------- #
-    # 🧠 Vector Database Management
-    # ----------------------------------------------------------- #
+
     def get_vectordb(self):
         """Initialize or load existing Chroma vector database."""
         try:
@@ -134,14 +124,9 @@ class DocumentProcessorTools:
         logger.info(f"Stored {len(chunks)} chunks in vector database.")
         return vectordb
 
-    # ----------------------------------------------------------- #
-    # ⚙️ Full Document Processing
-    # ----------------------------------------------------------- #
+
     def process_document(self, file_path: str) -> dict:
-        """
-        Loads, extracts, chunks, and embeds a document into ChromaDB.
-        Returns metadata + extracted text.
-        """
+        """Loads, extracts, chunks, and embeds a document into ChromaDB."""
         if not os.path.exists(file_path):
             return {"error": f"File not found: {file_path}"}
 
@@ -167,9 +152,6 @@ class DocumentProcessorTools:
             logger.error(f"Error processing document: {e}")
             return {"error": str(e)}
 
-    # ----------------------------------------------------------- #
-    # 🏷️ Store Metadata / AI Results
-    # ----------------------------------------------------------- #
     def store_metadata(self, content: str, meta_type: str, source_file: str):
         """Stores AI-generated content (summary, analysis, etc.) as metadata."""
         if not content.strip():
@@ -188,38 +170,30 @@ class DocumentProcessorTools:
             "vector_db_path": self.persist_directory
         }
 
-    # ----------------------------------------------------------- #
-    # 🧰 LangChain-Compatible Tool Definitions
-    # ----------------------------------------------------------- #
     def get_tools(self):
-        """Returns list of Tool objects for LangChain or LangGraph agent integration."""
-        return [
-            Tool(
-                name="process_document",
-                func=self.process_document,
-                description=(
-                    "Process and store a document (PDF, DOCX, PNG, JPG, JPEG) into the vector database. "
-                    "Returns JSON with file name, chunk count, DB path, and extracted text."
-                )
-            ),
-            Tool(
-                name="extract_text",
-                func=self.extract_text,
-                description=(
-                    "Extract raw text from a document without storing it in the database. "
-                    "Useful for passing plain text to other agents (e.g., summarizer)."
-                )
-            ),
-            Tool(
-                name="store_metadata",
-                func=lambda args: self.store_metadata(
-                    args.get("content", ""),
-                    args.get("type", "generic"),
-                    args.get("source", "unknown")
-                ),
-                description=(
-                    "Store AI-generated metadata (summary, insights, etc.) into the vector database. "
-                    "Input: dict {content: str, type: str, source: str}."
-                )
-            )
-        ]
+        """
+        LangGraph requires standalone functions (not bound methods),
+        so we wrap each tool into new decorated functions.
+        """
+
+        tools = []
+
+        @tool("process_document")
+        def _process_document(file_path: str):
+            """Process a document: extract text, split chunks, and store embeddings in ChromaDB."""
+            return self.process_document(file_path)
+        tools.append(_process_document)
+
+        @tool("extract_text")
+        def _extract_text(file_path: str):
+            """Extract raw text from a supported file without storing it."""
+            return self.extract_text(file_path)
+        tools.append(_extract_text)
+
+        @tool("store_metadata")
+        def _store_metadata(content: str, type: str = "generic", source: str = "unknown"):
+            """Store AI-generated metadata (summaries, insights) inside the vector DB."""
+            return self.store_metadata(content, type, source)
+        tools.append(_store_metadata)
+
+        return tools

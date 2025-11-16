@@ -97,7 +97,7 @@ class AnalysisStorageTool:
         self.vs.add_documents([LCDocument(page_content=text_repr, metadata=meta)])
         self.vs.persist()
 
-        return f"Stored analysis result: type='{result_type}', agent='{agent_name}', doc_id='{doc_id}'"
+        print(f"Stored analysis result: type='{result_type}', agent='{agent_name}', doc_id='{doc_id}'")
 
     def _retrieve_impl(self, query: str, k: int = 5, filter: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         # Chroma supports metadata filtering via 'where' param in similarity_search if using .similarity_search_with_score
@@ -128,6 +128,7 @@ class AnalysisStorageTool:
             "query": query,
             "results": payload
         }
+        
 
     # ---------- Public accessors ----------
     def get_tools(self):

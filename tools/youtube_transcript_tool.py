@@ -15,12 +15,10 @@ class YouTubeTranscriptTool:
         Returns the full transcript text.
         """
         try:
-            # Extract video ID
             video_id = parse_qs(urlparse(video_url).query).get("v", [None])[0]
             if not video_id:
                 raise ValueError("Invalid YouTube URL. Could not extract video ID.")
             
-            # Fetch transcript
             transcript_data = YouTubeTranscriptApi.get_transcript(video_id)
             transcript_text = " ".join([entry["text"] for entry in transcript_data])
             return transcript_text
