@@ -28,18 +28,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Store session state in memory (for demo purposes)
 session_state = {
     "file_path": None,
     "youtube_url": None,
     "chat_history": []
 }
 
-# ------------------- CONFIG ------------------- #
-UPLOAD_FILE_PATH = r"uploads\CN_pyq.pdf"  # <-- Change this to your test file
+UPLOAD_FILE_PATH = r"uploads\CN_pyq.pdf"
 VECTOR_DB_DIR = "vector_store"
 
-# ------------------- Initialize Agents ------------------- #
 doc_ingestion_agent = DocumentProcessorAgent(persist_directory=VECTOR_DB_DIR).create_agent()
 summarizer_agent = SummarizerAgent(persist_directory=VECTOR_DB_DIR).create_agent()
 pyq_analysis_agent = PYQSyllabusAnalyserAgent(persist_directory=VECTOR_DB_DIR).create_agent()
@@ -56,28 +53,22 @@ agents = {
     "store_analysis_agent": analysis_storage_agent,
 }
 
-# ------------------- Build Multi-Agent Graph ------------------- #
 agent_graph = MultiAgentGraph(agents)
 agent_graph.build_graph()
 compiled_graph = agent_graph.compile()
 
-# ------------------- QA Agent for chat ------------------- #
 qa_agent = QAAgent(persist_directory=VECTOR_DB_DIR)
 
-# ------------------- Supervisor Graph Execution ------------------- #
 def run_graph(file_path: str):
     print(f"[INFO] Starting workflow via graph for: {file_path}")
-    # Initial state with uploaded file info
     input_state = {
         "messages": [HumanMessage(content=f"New file uploaded: {file_path}")]
     }
 
-    # Stream agent responses via compiled graph
     agent_response_fragments = []
     try:
         for chunk in compiled_graph.stream(input_state):
             pretty_print_messages(chunk, last_message=True)
-            # Collect any AI message content
             if "messages" in chunk and chunk["messages"]:
                 for m in chunk["messages"]:
                     if m.content:
@@ -103,12 +94,10 @@ async def upload_file_or_url(
         with open(file_location, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         session_state["file_path"] = file_location
-        # Run the workflow graph for the uploaded file
         run_graph(file_location)
         return {"status": "success", "message": f"File '{file.filename}' uploaded and processed."}
     elif youtube_url:
         session_state["youtube_url"] = youtube_url
-        # Call YouTubeSummarizerAgent to process the video
         try:
             yt_agent = YouTubeSummarizerAgent(persist_directory=VECTOR_DB_DIR)
             result = yt_agent.summarize(youtube_url)
@@ -134,6 +123,10 @@ async def chat_with_bot(request: ChatRequest):
     answer = qa_agent.answer(question)
     session_state["chat_history"].append(("agent", answer))
     return {"status": "success", "answer": answer}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn
