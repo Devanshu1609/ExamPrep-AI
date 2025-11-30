@@ -1,0 +1,14 @@
+python-dotenv
+fastapi
+uvicorn[standard]
+youtube-transcript-api
+pydantic
+httpx   
+langchain
+langchain-openai
+langchain-community
+langchain_text_splitters
+langchain-core
+langgraph
+typing_extensions
+pytesseract
