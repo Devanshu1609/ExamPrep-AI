@@ -5,7 +5,7 @@ from tools.analysis_storage_tool import AnalysisStorageTool
 from langchain_core.messages import HumanMessage
 
 class YouTubeSummarizerAgent:
-    def __init__(self, model: str = "gemini-1.5-flash", persist_directory: str = "vector_store"):
+    def __init__(self, model: str = "openai:gpt-4.1", persist_directory: str = "vector_store"):
         self.model = model
         self.youtube_tool = YouTubeTranscriptTool()
         self.storage_tool = AnalysisStorageTool(persist_directory)
