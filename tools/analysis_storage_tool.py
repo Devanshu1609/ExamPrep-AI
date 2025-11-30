@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any, List, Union
 from datetime import datetime
 from pydantic import BaseModel, Field
 
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document as LCDocument
 from langchain_core.tools import StructuredTool
