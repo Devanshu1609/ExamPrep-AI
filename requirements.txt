@@ -12,3 +12,6 @@ langchain-core
 langgraph
 typing_extensions
 pytesseract
+chromadb
+langchain-chroma
+pysqlite3-binary
