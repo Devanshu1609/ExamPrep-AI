@@ -40,9 +40,7 @@ class DocumentProcessorTools:
         )
         self.batch_size = batch_size
 
-    # ----------------------------------------------------------- #
-    # 📘 Load and Extract Text
-    # ----------------------------------------------------------- #
+
     def load_document(self, file_path: str):
         """Loads documents of type PDF, DOCX, or Image."""
         ext = file_path.split('.')[-1].lower()

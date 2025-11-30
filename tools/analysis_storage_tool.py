@@ -37,13 +37,11 @@ class AnalysisStorageTool:
     def __init__(self, persist_directory: str = "vector_store"):
         self.persist_directory = persist_directory
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-        # Create or load persistent Chroma store
         self.vs = Chroma(
             persist_directory=persist_directory,
             embedding_function=self.embeddings
         )
 
-        # Build tools
         self._store_tool = StructuredTool.from_function(
             name="store_analysis_result",
             description=(
@@ -66,7 +64,6 @@ class AnalysisStorageTool:
             return_direct=False,
         )
 
-    # ---------- Tool implementations ----------
     def _store_impl(
         self,
         agent_name: str,
@@ -77,7 +74,6 @@ class AnalysisStorageTool:
     ) -> str:
         timestamp = datetime.utcnow().isoformat() + "Z"
 
-        # Normalize text representation (for vector embedding)
         if isinstance(result, (dict, list)):
             import json
             text_repr = json.dumps(result, ensure_ascii=False)
@@ -93,22 +89,17 @@ class AnalysisStorageTool:
         if metadata:
             meta.update(metadata)
 
-        # Add to vector store
         self.vs.add_documents([LCDocument(page_content=text_repr, metadata=meta)])
         self.vs.persist()
 
         print(f"Stored analysis result: type='{result_type}', agent='{agent_name}', doc_id='{doc_id}'")
 
     def _retrieve_impl(self, query: str, k: int = 5, filter: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        # Chroma supports metadata filtering via 'where' param in similarity_search if using .similarity_search_with_score
-        # LangChain community's Chroma exposes 'similarity_search' with 'k' and 'filter' (where) in new versions.
         try:
             results = self.vs.similarity_search(query, k=k, filter=filter)  # type: ignore[arg-type]
         except TypeError:
-            # Fallback for older versions without 'filter' param
             results = self.vs.similarity_search(query, k=k)
 
-            # Manual filter if needed
             if filter:
                 def match(meta, filt):
                     for kf, vf in filt.items():
@@ -130,7 +121,6 @@ class AnalysisStorageTool:
         }
         
 
-    # ---------- Public accessors ----------
     def get_tools(self):
         """Tools for agents that need to STORE results."""
         return [self._store_tool]
