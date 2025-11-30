@@ -2,6 +2,7 @@
 from langchain.agents import create_agent
 from tools.youtube_transcript_tool import YouTubeTranscriptTool
 from tools.analysis_storage_tool import AnalysisStorageTool
+from langchain_core.messages import HumanMessage
 
 class YouTubeSummarizerAgent:
     def __init__(self, model: str = "gemini-1.5-flash", persist_directory: str = "vector_store"):
@@ -63,3 +64,11 @@ class YouTubeSummarizerAgent:
             ),
             name=self.name
         )
+
+    def summarize(self, youtube_url: str):
+        agent = self.create_agent()
+        messages = [
+            HumanMessage(content=f"Summarize this YouTube video: {youtube_url}")
+        ]
+        result = agent.invoke({"messages": messages})
+        return result

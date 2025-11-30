@@ -1,10 +1,7 @@
 import os
 from typing import List, Optional, Dict, Any
-
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-
-# Vector DB sources
 from tools.analysis_storage_tool import AnalysisStorageTool
 from tools.document_processor_tool import DocumentProcessorTools
 
@@ -50,12 +47,12 @@ class QAAgent:
         return (
             "You are ExamPrepAI, a knowledgeable assistant for students.\n"
             "You answer using ONLY the provided 'RAW TEXT CONTEXT' and 'ANALYSIS CONTEXT'.\n\n"
-            "🎯 GOALS:\n"
+            "GOALS:\n"
             "- Explain clearly and accurately.\n"
             "- Highlight exam trends & important topics.\n"
             "- Prefer ANALYSIS context if present.\n"
             "- If context is weak, admit uncertainty.\n\n"
-            "🧠 RULES:\n"
+            "RULES:\n"
             "1. Never invent facts.\n"
             "2. If context is missing — say so.\n"
             "3. Use examples from context only.\n"

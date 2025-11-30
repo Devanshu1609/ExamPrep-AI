@@ -13,7 +13,7 @@ class SupervisorAgent:
     def create_agent(self):
         return create_agent(
             model=self.model,
-            tools=[],  # Supervisor does not perform direct work — only decides routing
+            tools=[], 
             system_prompt=(
                 "You are the **Supervisor Agent** for the ExamPrep AI System.\n\n"
                 "Your job is to intelligently decide **which specialized agent** should be called next "
